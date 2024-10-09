@@ -13,7 +13,6 @@ from sklearn.metrics import accuracy_score
 
 # method for saving a file in a dataset directory for individual laps results.
 # OPTIONAL
-'''
 def save_to_file_directory(data_dir, dataset_name, shot_dir, normalize_data, acc):
   path = data_dir + dataset_name + shot_dir
   with open(path+'results_tapnet.txt', 'w') as f:
@@ -22,5 +21,4 @@ def save_to_file_directory(data_dir, dataset_name, shot_dir, normalize_data, acc
     f.write(str(normalize_data) + '\n')
     f.write(str(acc) + '\n')
     f.write(str(acc.mean()))
-'''
 
