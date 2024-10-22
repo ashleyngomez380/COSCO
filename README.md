@@ -7,3 +7,5 @@ Submitted & accepted for publication in CIKM '24 conference.
 
 This code is a work in progress, as raw code is posted but a tutorial version will be uploaded soon. 
 Thank you for your patience!
+
+COSCO file contains dataframe logic, ResNet, SAM, and Prototypical Loss methods.
