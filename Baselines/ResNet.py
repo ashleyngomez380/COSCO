@@ -1,18 +1,17 @@
-import torch
-import torch.nn.functional as F
 import numpy as np
+import torch
+from torch import nn
 from torch import optim
+import torch.nn.functional as F
 from torchvision import datasets, transforms, models
-import torch.nn as nn
 from torch.nn.modules.batchnorm import _BatchNorm
 import pandas as pd
-
-# Resnet parameters
-optimizer = 'sgd'
-lr = 0.01
-rho = 0.1
-nEpoch = 100
-
+import torch.nn as nn
+import os
+import uuid
+import torch.utils.data
+from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim
 
 def disable_running_stats(model):
     def _disable(module):
@@ -29,14 +28,7 @@ def enable_running_stats(model):
 
     model.apply(_enable)
 
-import os
-import uuid
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.utils.data
 
 class ResNetTrainer:
     def __init__(self, device, logger):
@@ -105,7 +97,7 @@ class ResNet(nn.Module):
 
     def __init__(self, input_size, nb_classes):
         super(ResNet, self).__init__()
-        n_feature_maps = 64
+        n_feature_maps = 128
 
         self.block_1 = ResNetBlock(input_size, n_feature_maps)
         self.block_2 = ResNetBlock(n_feature_maps, n_feature_maps)
@@ -161,218 +153,3 @@ class Dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.X)
-
-import numpy as np
-
-import torch
-from torch.utils.data import Dataset, DataLoader
-
-class Dataset(Dataset):
-  def __init__(self, X_train, y_train):
-    # need to convert float64 to float32 else
-    # will get the following error
-    # RuntimeError: expected scalar type Double but found Float
-    self.X = torch.from_numpy(X_train.astype(np.float32))
-    # need to convert float64 to Long else
-    # will get the following error
-    # RuntimeError: expected scalar type Long but found Float
-    self.y = torch.from_numpy(y_train).type(torch.LongTensor)
-    self.len = self.X.shape[0]
-
-  def __getitem__(self, index):
-    return self.X[index], self.y[index]
-  def __len__(self):
-    return self.len
-
-def load_data(dataset_name, shot_dir, normalize_data=False):
-  data_dir = 'drive/MyDrive/classification_data/'
-  #dataset_name = 'PenDigits/'
-  #shot_dir = '5-shot/'
-
-  #tiny epsilon value
-  epsilon = 1e-8
-
-  train_data = np.load(data_dir + dataset_name + shot_dir + 'X_train.npy')
-  train_label = np.load(data_dir + dataset_name + shot_dir + 'y_train.npy')
-  test_data = np.load(data_dir + dataset_name + 'X_test.npy')
-  test_label = np.load(data_dir + dataset_name + 'y_test.npy')
-  if normalize_data:
-    train_data = (train_data - train_data.mean(axis=1)[:, None]) / (train_data.std(axis=1)[:, None] + epsilon)
-    test_data = (test_data - test_data.mean(axis=1)[:, None]) / (test_data.std(axis=1)[:, None] + epsilon)
-
-  return train_data, train_label, test_data, test_label
-
-import torch.optim as optim
-
-def vanilla_train_model(trainloader, train_label, test_data, test_label, input_size):
-
-  model_resnet = ResNet(input_size = input_size, nb_classes=len(np.unique(train_label)))
-  criterion = nn.CrossEntropyLoss()
-
-
-  runSAM = False
-  optimizer = 'sgd'
-
-
-
-
-  if runSAM==False:
-    optimizer = torch.optim.SGD(model_resnet.parameters(), lr=lr, momentum=0.9)
-    #optimizer = optim.Adam(model_resnet.parameters(), lr=1e-8)
-  else:
-    base_optimizer = torch.optim.SGD # define an optimizer for the "sharpness-aware" update
-    optimizer = SAM(model_resnet.parameters(), base_optimizer, lr=lr, momentum=0.9, rho=rho)
-
-
-  # ResNet vanilla
-  #100 epoch for batch = 1024*
-  best_loss = 10000 #smaller is better.
-  max_limit = 20
-  counter = 0
-
-
-  model_resnet = model_resnet.cuda()
-
-  criterion = nn.CrossEntropyLoss()
-
-  for epoch in range(nEpoch):  # loop over the dataset multiple times
-      running_loss = 0.0
-      val_running_loss = 0.0
-      for i, data in enumerate(trainloader, 0):
-          # get the inputs; data is a list of [inputs, labels]
-          inputs, labels = data
-          inputs = inputs.cuda()
-          labels = labels.cuda()
-
-
-          # zero the parameter gradients
-          optimizer.zero_grad()
-
-          # forward + backward + optimize
-          outputs1 = model_resnet(torch.tensor(inputs).transpose(1,2).float())
-          outputs = outputs1[0]#1
-
-          labels = torch.squeeze(labels, dim=1)
-
-          loss = criterion(outputs, labels)
-          loss.backward()
-          optimizer.step()
-
-          # print statistics
-          running_loss += loss.item()
-          print("Epoch:", epoch+1, "-->", running_loss, loss.item())
-
-  print('Finished Training')
-
-
-  data = torch.from_numpy(test_data).float()
-  data = data.cuda()
-
-  pred, embed = model_resnet(data.transpose(1,2).float())
-
-  correct = 0
-  total = 0
-
-  labels = torch.squeeze(torch.from_numpy(test_label), dim=1)
-  _, predicted = torch.max(pred.data, 1)
-  total = labels.size(0)
-  correct = (predicted == labels.cuda()).sum().item()
-  acc = correct/total
-
-  print("Final Accuracy: ",acc)
-
-  return acc
-
-def save_to_file_directory(data_dir, dataset_name, shot_dir, normalize_data, acc):
-  path = data_dir + dataset_name + shot_dir
-  with open(path+'results_vanilla_resnet.txt', 'w') as f:
-    f.write(dataset_name + '\n')
-    f.write(shot_dir + '\n')
-    f.write(str(normalize_data) + '\n')
-    f.write(str(acc) + '\n')
-    f.write(str(acc.mean()))
-
-def save_to_dataframe(dataframe_name, dataset_name, shot_dir, normalize_data, acc):
-  # path to the dataframe csv file
-  path = dataframe_name
-
-  # new dataframe for appending (accuracy tensor in mean)
-  new_data = {
-      'Dataset': [dataset_name],
-      'Shots': [shot_dir],
-      'Normalization': [normalize_data],
-      'Result': [acc.mean()]
-  }
-
-  new_df = pd.DataFrame(new_data)
-
-  # append the new dataframe to the existing csv
-  new_df.to_csv(path, mode='a', header=False, index=False)
-
-def full_training(dataset_name, shot_dir, normalize_data = True):
-  data_dir = 'drive/MyDrive/classification_data/'
-  #dataset_name = 'ArticularyWordRecognition/'
-  #shot_dir = '5-shot/'
-
-
-  print('reading ' + dataset_name + '...')
-  train_data, train_label, test_data, test_label = load_data(dataset_name, shot_dir, normalize_data)
-  print(train_data.shape)
-  traindata = Dataset(train_data, train_label)
-
-  input_size = train_data.shape[-1]
-
-  print(input_size)
-
-  batch_size = 1024
-
-  trainloader = DataLoader(traindata, batch_size=batch_size,
-                          shuffle=True, num_workers=2)
-
-  acc = []
-  for i in range(5):
-    acc_tmp = vanilla_train_model(trainloader, train_label, test_data, test_label, input_size)
-    print(i)
-    acc.append(acc_tmp)
-
-  acc = np.array(acc)
-
-  # save the data
-  save_to_file_directory(data_dir, dataset_name, shot_dir, normalize_data, acc)
-
-  # save to dataframe
-  save_to_dataframe(filepath, dataset_name, shot_dir, normalize_data, acc)
-
-  return acc
-
-# Build your dataframes in this logic for result saving.
-# Replace variables to desired locations.
-'''
-# columns for our results dataframe
-columns = ["Dataset", "Shots", "Normalization", "Result"]
-
-# dataframe construction
-df = pd.DataFrame(columns = columns)
-
-# filepath for our csv
-filepath = 'drive/MyDrive/classification_data/' + 'results_vanilla_resnet_Character_Traj.csv'
-
-# creating empty df and csv
-df.to_csv(filepath, index=False)
-'''
-
-# Training cycle example logic:
-'''
-# change datasets and shot here
-dataset_name_vec = ['CharacterTrajectories/']
-shot_dir_vec = ['1-shot/']
-
-
-
-#dataset_name = 'ArticularyWordRecognition/'
-#shot_dir = '10-shot/'
-
-for dataset_name in dataset_name_vec:
-  for shot_dir in shot_dir_vec:
-    full_training(dataset_name, shot_dir, True)
-'''
